@@ -1,5 +1,5 @@
 import express from 'express';
-import { createCenter, editCenter, deleteCenter, getAllCenters, getCenterById, createManager, getAllManagers, deleteManager, getManagerById, editManager,  createCourse, editCourse, getAllCourses, getCourseById, deleteCourse, adminGetAllStaff, adminGetOneStaff, adminGetAllStudents, adminGetOneStudent, deleteStudent, getAllInvoices, getAllPayments, getPaymentById, getInvoiceById, getPaymentsByStudentId, cleanupOrphanedPaymentsAndPlans, cleanupOrphanedInvoices, deleteStudentPayment } from '../controllers/admindashController';
+import { createCenter, editCenter, deleteCenter, getAllCenters, getCenterById, createManager, getAllManagers, deleteManager, getManagerById, editManager,  createCourse, editCourse, getAllCourses, getCourseById, deleteCourse, adminGetAllStaff, adminGetOneStaff, adminGetAllStudents, adminGetOneStudent, deleteStudent, getAllInvoices, getAllPayments, getPaymentById, getInvoiceById, getPaymentsByStudentId, cleanupOrphanedPaymentsAndPlans, cleanupOrphanedInvoices, deleteStudentPayment, getFinancialReport, fixLegacyPaymentPlans } from '../controllers/admindashController';
 import verifyToken  from '../../middlewares/authMiddleware';
 const router = express.Router();
 
@@ -53,6 +53,10 @@ router.delete("/student/payment/:id", verifyToken, deleteStudentPayment);
 
 router.post('/cleanup-orphaned-payments-and-plans', verifyToken, cleanupOrphanedPaymentsAndPlans);
 router.post('/cleanup-orphaned-invoices', verifyToken, cleanupOrphanedInvoices);
+router.post("/fix-legacy-plans", verifyToken, fixLegacyPaymentPlans);
+
+// report
+router.get('/report/financial', verifyToken, getFinancialReport)
 
 
 export default router;

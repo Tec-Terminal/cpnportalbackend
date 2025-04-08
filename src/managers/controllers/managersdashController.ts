@@ -454,9 +454,7 @@ export const deleteStaff = async (req: Request, res: Response) => {
   }
 };
 
-// add course to student
-
-
+// add paymentplan
 export const addCourse = async (req: Request, res: Response) => {
   const { id } = req.params;
   const { amount, course_id, installments, reg_date } = req.body;
@@ -490,11 +488,20 @@ export const addCourse = async (req: Request, res: Response) => {
     // Calculate the next payment date from the registration date
     const next_payment_date = moment(reg_date).add(intervalInMonths, 'months');
 
+    // calculate the per-installment
+    const perInstallment = amount / installments
+
+    let paid: number = 0
+    let pending: number = amount
+
     const paymentPlan = new Paymentplan({
       user_id: student._id,
       amount,
       course_id: course._id,
       installments,
+      paid,
+      pending,
+      per_installment: perInstallment,
       estimate,
       reg_date,
       next_payment_date,
@@ -519,6 +526,38 @@ export const addCourse = async (req: Request, res: Response) => {
     });
   }
 };
+
+// get paymentplan for a student
+export const getPaymentPlan = async(req:Request, res:Response)=>{
+  try {
+    const user = await getUser(req);
+    if (!user || user.isAdmin) {
+      return res.status(401).json({ data: "Unauthorized", status: 401 });
+    }
+
+    const {id} = req.params
+
+    const plan = await Paymentplan.findById(id)
+    if (!plan) {
+      return res.status(404).json({
+        data: "Paymentplan not found not found",
+        status: 404,
+      });
+    }
+
+    res.status(200).json({
+      data: plan,
+      status: 200,
+    });
+
+  } catch (error) {
+    console.log(error),
+    res.status(500).json({
+      error: "Error fetching the Paymentplan",
+      details: error,
+    });
+  }
+}
 
 // create invoice
 export const createInvoice = async (req: Request, res: Response) => {
@@ -681,11 +720,13 @@ export const deleteInvoice = async (req: Request, res: Response) => {
 
 // add payment
 export const addPayment = async (req: Request, res: Response) => {
-  const { id } = req.params;
-  const { amount, payment_plan_id, message, disclaimer, payment_date } =
-    req.body;
+ 
 
   try {
+    const { id } = req.params;
+    const { amount, payment_plan_id, message, disclaimer, payment_date } =
+      req.body;
+    
     const user = await getUser(req);
     if (!user || user.isAdmin) {
       return res.status(401).json({ data: "Unauthorized", status: 401 });
@@ -699,14 +740,13 @@ export const addPayment = async (req: Request, res: Response) => {
       return res.status(404).json({ data: "Student not found", status: 404 });
     }
     
+    // Find the payment plan to get the last payment date
+    const paymentPlan = await Paymentplan.findById(payment_plan_id);
+    if (!paymentPlan) {
+      return res.status(404).json({ data: "Payment plan not found", status: 404 });
+    }
 
-        // Find the payment plan to get the last payment date
-        const paymentPlan = await Paymentplan.findById(payment_plan_id);
-        if (!paymentPlan) {
-          return res.status(404).json({ data: "Payment plan not found", status: 404 });
-        }
-
-            // Use the next payment date from the payment plan as the last payment date
+    // Use the next payment date from the payment plan as the last payment date
     const lastPaymentDate = paymentPlan.next_payment_date || payment_date;
 
     const newPayment = new Payment({
@@ -721,12 +761,17 @@ export const addPayment = async (req: Request, res: Response) => {
 
     await newPayment.save();
 
+    // update the paid and pending in the payment plan
+    paymentPlan.paid = typeof paymentPlan.paid === 'number' ? paymentPlan.paid : 0;
+
+
+    paymentPlan.paid += +amount;
+    paymentPlan.pending = paymentPlan.amount - paymentPlan.paid;
     // Update the next payment date in the payment plan
     const nextPaymentDate = moment(lastPaymentDate).add(1, 'months').toISOString(); // Convert Moment to ISO string
     paymentPlan.next_payment_date = nextPaymentDate; // Assign as an ISO string
+    paymentPlan.last_payment_date = payment_date
     await paymentPlan.save();
-
-
     res.status(201).json({
       status: 201,
       data: {
@@ -779,7 +824,7 @@ export const getAllPayments = async (req: Request, res: Response) => {
         path: "payment_plan_id",
         model: Paymentplan,
         select:
-          "amount installments estimate last_payment_date next_payment_date reg_date",
+          "amount installments paid pending per_installment estimate last_payment_date next_payment_date reg_date",
         populate: [
           {
             path: "course_id",
@@ -850,7 +895,7 @@ export const getPaymentById = async (req: Request, res: Response) => {
       path: "payment_plan_id",
       model: Paymentplan,
       select:
-        "amount installments estimate last_payment_date next_payment_date reg_date",
+        "amount installments paid pending per_installment estimate last_payment_date next_payment_date reg_date",
       populate: [
         {
           path: "course_id",
@@ -1109,65 +1154,4 @@ export const deleteStaffCertificate = async (req: Request, res: Response) => {
 
 
 
-
-// create reports
-export const createReport = async (req: Request, res: Response) => {
-  const { title, description, date, reportType, enquiries, totalPayments, summary } = req.body;
-
-  if (!title || !description || !date || !reportType || !enquiries || !totalPayments || !summary) {
-      return res.status(400).json({ data: "All fields are required", status: 400 });
-  }
-
-  if (!['daily', 'weekly', 'monthly'].includes(reportType)) {
-      return res.status(400).json({ data: "Invalid report type", status: 400 });
-  }
-
-  try {
-      const user = await getUser(req);
-      if (!user || user.isAdmin) {
-          return res.status(401).json({ data: "Unauthorized", status: 401 });
-      }
-
-      const center = user.user.center;
-
-      const newReport = new Report({
-          title,
-          description,
-          date,
-          center,
-          reportType,
-          enquiries,
-          totalPayments,
-          summary,
-          createdBy: user.user._id,
-      });
-
-      await newReport.save();
-
-      return res.status(201).json({
-          status: 201,
-          data: {
-              newReport,
-              message: "Report Created Successfully",
-          },
-      });
-  } catch (error) {
-      console.error("Error Creating Report:", error);
-      return res.status(500).json({ message: "Internal Server Error" });
-  }
-};
-
-// get individual report 
-export const getIndividualReport = async ()=>{
-  
-
-}
-
-// get all reports for the center of the manager
-export async function getAllReports(){
-
-}
-
-
-
-
+// Center overview, endpoints for report generation

@@ -913,6 +913,67 @@ export const cleanupOrphanedInvoices = async (req: Request, res: Response) => {
   }
 };
 
+// =================================PAYMENT FIX==========================================
+export const fixLegacyPaymentPlans = async (req: Request, res: Response) => {
+  try {
+    const legacyPlans = await Paymentplan.find({
+      $or: [
+        { paid: { $exists: false } },
+        { pending: { $exists: false } },
+        { per_installment: { $exists: false } },
+      ]
+    });
+
+    console.log(`Found ${legacyPlans.length} legacy payment plans.`);
+
+    if (legacyPlans.length === 0) {
+      return res.status(200).json({
+        message: "No legacy payment plans found that need fixing.",
+        fixedPlans: 0,
+      });
+    }
+
+    let fixedCount = 0;
+
+    for (const plan of legacyPlans) {
+      try {
+        const payments = await Payment.find({
+          payment_plan_id: plan._id,
+        });
+
+        const totalPaid = payments.reduce((sum, p) => sum + (p.amount || 0), 0);
+        const perInstallment = plan.amount / plan.installments;
+        const pending = plan.amount - totalPaid;
+
+        plan.paid = totalPaid;
+        plan.per_installment = perInstallment;
+        plan.pending = pending;
+
+        await plan.save();
+
+        fixedCount++;
+        console.log(`✅ Fixed PaymentPlan ${plan._id}: Paid=${totalPaid}, Pending=${pending}`);
+      } catch (err) {
+        console.error(`❌ Failed to fix plan ${plan._id}`, err);
+      }
+    }
+
+    // Final response after all fixes
+    return res.status(200).json({
+      message: `Migration complete. ${fixedCount} payment plans were successfully fixed.`,
+      fixedPlans: fixedCount,
+    });
+  } catch (error) {
+    console.error("Error during legacy payment plan fix:", error);
+    return res.status(500).json({
+      message: "Internal Server Error. Could not fix legacy payment plans.",
+      error
+    });
+  }
+};
+
+
+
 
 
 
@@ -1264,7 +1325,152 @@ export const getPaymentsByStudentId = async (req: Request, res: Response) => {
 };
 
 
-// delete reciept
+// center view
+
+export const getFinancialReport = async (req: Request, res: Response) => {
+  try {
+    const user = await getUser(req);
+    if (!user) {
+      console.log("❌ Unauthorized access");
+      return res.status(401).json({ data: "Unauthorized", status: 401 });
+    }
+
+    const { from, to, center, course, status } = req.query;
+
+    let studentQuery: any = {};
+    let dateQuery: any = {};
+
+    // Handle date filters
+    if (from || to) {
+      dateQuery = {};
+      if (from) dateQuery.$gte = new Date(from as string);
+      if (to) dateQuery.$lte = new Date(to as string);
+    }
+
+    // Filter students by center
+    if (center) {
+      if (!mongoose.isValidObjectId(center)) {
+        return res.status(400).json({ data: "Invalid center ID", status: 400 });
+      }
+      studentQuery.center = center;
+    }
+
+    // Get students
+    const students = await Student.find(studentQuery).lean();
+
+    if (students.length === 0) {
+      return res.status(200).json({
+        status: 200,
+        data: {
+          message: "No students found",
+          totalCompleted: 0,
+          totalPending: 0,
+          totalPaid: 0,
+          records: [],
+        },
+      });
+    }
+
+    const studentIds = students.map((s) => s._id);
+
+    // Get payment plans for those students
+    let planQuery: any = { user_id: { $in: studentIds } };
+    if (course && mongoose.isValidObjectId(course)) {
+      planQuery.course_id = course;
+    }
+
+    const plans = await Paymentplan.find(planQuery)
+      .populate("course_id", "title duration amount")
+      .lean();
+
+    const planIds = plans.map((p) => p._id);
+    const planMap = new Map<string, any>();
+    plans.forEach((p) => planMap.set(String(p._id), p));
+
+    // Get payments based on plans + date filter
+    let paymentQuery: any = {
+      user_id: { $in: studentIds },
+      payment_plan_id: { $in: planIds },
+    };
+    if (from || to) {
+      paymentQuery.payment_date = dateQuery;
+    }
+
+    const payments = await Payment.find(paymentQuery).lean();
+
+    // Group payments by student
+    const studentPaymentsMap: Map<string, number> = new Map();
+    payments.forEach((p) => {
+      const key = String(p.user_id);
+      studentPaymentsMap.set(key, (studentPaymentsMap.get(key) || 0) + p.amount);
+    });
+
+    // Build financial report per student
+    let totalPaid = 0;
+    let totalPending = 0;
+    let totalCompleted = 0;
+
+    const records = [];
+
+    for (const student of students) {
+      const studentPlans = plans.filter((p) => String(p.user_id) === String(student._id));
+      const studentTotalPaid = studentPaymentsMap.get(String(student._id)) || 0;
+      const totalPlanAmount = studentPlans.reduce((sum, plan) => sum + plan.amount, 0);
+
+      const isCompleted = studentTotalPaid >= totalPlanAmount;
+
+      // Apply status filter
+      if (status === "completed" && !isCompleted) continue;
+      if (status === "pending" && isCompleted) continue;
+
+      totalPaid += studentTotalPaid;
+      if (isCompleted) totalCompleted += 1;
+      else totalPending += 1;
+
+      records.push({
+        id: student._id,
+        student_id: student.student_id,
+        fullname: student.fullname,
+        email: student.email,
+        phone: student.phone,
+        center: student.center,
+        totalPlanAmount,
+        totalPaid: studentTotalPaid,
+        status: isCompleted ? "completed" : "pending",
+        planDetails: studentPlans.map((plan) => ({
+          amount: plan.amount,
+          estimate: plan.estimate,
+          course: plan.course_id,
+          last_payment_date: plan.last_payment_date,
+          next_payment_date: plan.next_payment_date,
+        })),
+      });
+    }
+
+    return res.status(200).json({
+      status: 200,
+      data: {
+        totalCompleted,
+        totalPending,
+        totalPaid,
+        totalStudents: records.length,
+        records,
+      },
+    });
+  } catch (error) {
+    console.error("❌ Error fetching financial report:", error);
+    res.status(500).json({ data: "Internal Server Error", status: 500, details: error });
+  }
+};
+
+export const getTotalPayments = async(req:Request, res:Response)=>{
+  try {
+    
+  } catch (error) {
+    
+  }
+}
+
 
 
 

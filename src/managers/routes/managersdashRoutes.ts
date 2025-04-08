@@ -23,8 +23,8 @@ import {
   uploadStaffImage,
   uploadStaffCertificate,
   deleteStaffCertificate,
-  createReport,
-  editPayment
+  editPayment,
+  getPaymentPlan
 } from "../../managers/controllers/managersdashController";
 import verifyToken from "../../middlewares/authMiddleware";
 import upload from "../../middlewares/multerConfig";
@@ -64,8 +64,6 @@ router.get("/student/payment/:id", verifyToken, getPaymentById);
 router.patch("/student/payment/:id", verifyToken, editPayment)
 router.get('/payments/student/:id', verifyToken, getPaymentsByStudentId);
 router.get('/payments/balance/:id', verifyToken, getPlanBalance);
+router.get('/student/plan/:id', verifyToken, getPaymentPlan)
 
-
-// manage add report
-router.post("/report", verifyToken, createReport)
 export default router;
