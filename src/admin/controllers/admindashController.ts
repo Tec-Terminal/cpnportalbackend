@@ -1272,6 +1272,38 @@ export const getAllInvoices = async (req: Request, res: Response) => {
   };
 
   // get all payment for a student
+  export const adminGetPaymentPlan = async(req:Request, res:Response)=>{
+    try {
+      const user = await getUser(req);
+      if (!user || !user.isAdmin) {
+        return res.status(401).json({ data: "Unauthorized", status: 401 });
+      }
+  
+      const {id} = req.params
+  
+      const plan = await Paymentplan.findById(id)
+      if (!plan) {
+        return res.status(404).json({
+          data: "Paymentplan not found not found",
+          status: 404,
+        });
+      }
+  
+      res.status(200).json({
+        data: plan,
+        status: 200,
+      });
+  
+    } catch (error) {
+      console.log(error),
+      res.status(500).json({
+        error: "Error fetching the Paymentplan",
+        details: error,
+      });
+    }
+  }
+
+
 export const getPaymentsByStudentId = async (req: Request, res: Response) => {
   const { id } = req.params;
 
@@ -1303,14 +1335,7 @@ export const getPaymentsByStudentId = async (req: Request, res: Response) => {
           }]
         },
       ],
-    }).sort( {payment_date: -1});
-
-    // if (payments.length === 0) {
-    //   return res.status(404).json({
-    //     data: "No payments found for the student",
-    //     status: 404,
-    //   });
-    // }
+    });
 
     res.status(200).json({
       data: payments,
@@ -1325,8 +1350,25 @@ export const getPaymentsByStudentId = async (req: Request, res: Response) => {
 };
 
 
-// center view
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+// =======================================================
 export const getFinancialReport = async (req: Request, res: Response) => {
   try {
     const user = await getUser(req);
@@ -1463,13 +1505,7 @@ export const getFinancialReport = async (req: Request, res: Response) => {
   }
 };
 
-export const getTotalPayments = async(req:Request, res:Response)=>{
-  try {
-    
-  } catch (error) {
-    
-  }
-}
+
 
 
 
