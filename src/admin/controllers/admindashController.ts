@@ -1041,19 +1041,10 @@ export const getAllInvoices = async (req: Request, res: Response) => {
         }
   
         let queryConditions: any = {};
-
         // Validate and apply date filter
         if (date) {
-            const selectedDate = new Date(date as string);
-            if (isNaN(selectedDate.getTime())) {
-                return res.status(400).json({ data: "Invalid date format", status: 400 });
-            }
+           queryConditions.payment_date = date as string
 
-            // Match payments within the selected date (from 00:00 to 23:59)
-            queryConditions.payment_date = {
-                $gte: new Date(selectedDate.setHours(0, 0, 0, 0)),  
-                $lt: new Date(selectedDate.setHours(23, 59, 59, 999)) 
-            };
         }
         
         // If center is provided, filter by center
@@ -1505,6 +1496,58 @@ export const getFinancialReport = async (req: Request, res: Response) => {
   }
 };
 
+
+export const getReport = async(req: Request, res:Response) =>{
+   try {
+
+    const user = await getUser(req);
+    if (!user || !user.isAdmin) {
+        return res.status(401).json({ data: 'Unauthorized', status: 401 });
+    }
+
+    const { from, to } = req.query;
+
+    const query: any = {};
+    
+    // Apply date filter (reg_date is stored as YYYY-MM-DD string)
+    if (from || to) {
+      query.reg_date = {};
+    
+      if (from) query.reg_date.$gte = from as string;
+      if (to) query.reg_date.$lte = to as string;
+    }
+    
+    // Fetch plans based on date filter
+    const paymentPlans = await Paymentplan.find(query);
+    
+    // Basic counts
+    const totalPaymentPlans = paymentPlans.length;
+    const completedPlans = paymentPlans.filter(plan => plan.paid > 0);
+    const pendingPlans = paymentPlans.filter(plan => plan.pending > 0);
+    
+    // Sums
+    const TotalCompletedAmount = completedPlans.reduce((acc, plan) => acc + plan.paid, 0);
+    const TotalPendingAmount = pendingPlans.reduce((acc, plan) => acc + plan.pending, 0);
+    
+    return res.status(200).json({
+      status: 200,
+      filters: { from, to },
+      data: {
+        totalPaymentPlans,
+        completedCount: completedPlans.length,
+        pendingCount: pendingPlans.length,
+        TotalCompletedAmount: `₦${TotalCompletedAmount.toLocaleString()}`,
+        TotalPendingAmount: `₦${TotalPendingAmount.toLocaleString()}`
+      }
+    });
+    
+   } catch (error) {
+    console.error(" Error fetching report:", error);
+    return res.status(500).json({ data: "Internal Server Error", status: 500});
+   }
+
+    
+}
 
 
 

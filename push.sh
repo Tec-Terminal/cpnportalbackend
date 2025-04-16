@@ -1,3 +1,3 @@
 git add .
-git commit -m "added get paymentplan for admin"
+git commit -m "fixed payment fiter for admin"
 git push origin main

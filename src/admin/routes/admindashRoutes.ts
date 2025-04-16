@@ -1,5 +1,5 @@
 import express from 'express';
-import { createCenter, editCenter, deleteCenter, getAllCenters, getCenterById, createManager, getAllManagers, deleteManager, getManagerById, editManager,  createCourse, editCourse, getAllCourses, getCourseById, deleteCourse, adminGetAllStaff, adminGetOneStaff, adminGetAllStudents, adminGetOneStudent, deleteStudent, getAllInvoices, getAllPayments, getPaymentById, getInvoiceById, getPaymentsByStudentId, cleanupOrphanedPaymentsAndPlans, cleanupOrphanedInvoices, deleteStudentPayment, getFinancialReport, fixLegacyPaymentPlans, adminGetPaymentPlan } from '../controllers/admindashController';
+import { createCenter, editCenter, deleteCenter, getAllCenters, getCenterById, createManager, getAllManagers, deleteManager, getManagerById, editManager,  createCourse, editCourse, getAllCourses, getCourseById, deleteCourse, adminGetAllStaff, adminGetOneStaff, adminGetAllStudents, adminGetOneStudent, deleteStudent, getAllInvoices, getAllPayments, getPaymentById, getInvoiceById, getPaymentsByStudentId, cleanupOrphanedPaymentsAndPlans, cleanupOrphanedInvoices, deleteStudentPayment, getFinancialReport, fixLegacyPaymentPlans, adminGetPaymentPlan, getReport } from '../controllers/admindashController';
 import verifyToken  from '../../middlewares/authMiddleware';
 const router = express.Router();
 
@@ -57,6 +57,7 @@ router.post("/fix-legacy-plans", verifyToken, fixLegacyPaymentPlans);
 
 // report
 router.get('/report/financial', verifyToken, getFinancialReport)
+router.get('/report', verifyToken, getReport);
 
 
 export default router;
