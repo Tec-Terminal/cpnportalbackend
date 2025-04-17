@@ -1,3 +1,3 @@
 git add .
-git commit -m "fixed payment fiter for admin"
+git commit -m "Added fetch report endpoint"
 git push origin main

@@ -12,6 +12,8 @@ import Paymentplan from '../../models/paymentplanModel';
 import { Paginated } from '../../types/pagination.types';
 import Invoice from "../../models/invoiceModel";
 import Payment from "../../models/paymentModel";
+import ExcelJS from 'exceljs';
+
 
 
 dotenv.config();
@@ -1359,195 +1361,245 @@ export const getPaymentsByStudentId = async (req: Request, res: Response) => {
 
 
 
-// =======================================================
-export const getFinancialReport = async (req: Request, res: Response) => {
+// ======================================================= RECORDS ======================================
+
+export const getReport = async (req: Request, res: Response) => {
   try {
     const user = await getUser(req);
-    if (!user) {
-      console.log("❌ Unauthorized access");
-      return res.status(401).json({ data: "Unauthorized", status: 401 });
-    }
-
-    const { from, to, center, course, status } = req.query;
-
-    let studentQuery: any = {};
-    let dateQuery: any = {};
-
-    // Handle date filters
-    if (from || to) {
-      dateQuery = {};
-      if (from) dateQuery.$gte = new Date(from as string);
-      if (to) dateQuery.$lte = new Date(to as string);
-    }
-
-    // Filter students by center
-    if (center) {
-      if (!mongoose.isValidObjectId(center)) {
-        return res.status(400).json({ data: "Invalid center ID", status: 400 });
-      }
-      studentQuery.center = center;
-    }
-
-    // Get students
-    const students = await Student.find(studentQuery).lean();
-
-    if (students.length === 0) {
-      return res.status(200).json({
-        status: 200,
-        data: {
-          message: "No students found",
-          totalCompleted: 0,
-          totalPending: 0,
-          totalPaid: 0,
-          records: [],
-        },
-      });
-    }
-
-    const studentIds = students.map((s) => s._id);
-
-    // Get payment plans for those students
-    let planQuery: any = { user_id: { $in: studentIds } };
-    if (course && mongoose.isValidObjectId(course)) {
-      planQuery.course_id = course;
-    }
-
-    const plans = await Paymentplan.find(planQuery)
-      .populate("course_id", "title duration amount")
-      .lean();
-
-    const planIds = plans.map((p) => p._id);
-    const planMap = new Map<string, any>();
-    plans.forEach((p) => planMap.set(String(p._id), p));
-
-    // Get payments based on plans + date filter
-    let paymentQuery: any = {
-      user_id: { $in: studentIds },
-      payment_plan_id: { $in: planIds },
-    };
-    if (from || to) {
-      paymentQuery.payment_date = dateQuery;
-    }
-
-    const payments = await Payment.find(paymentQuery).lean();
-
-    // Group payments by student
-    const studentPaymentsMap: Map<string, number> = new Map();
-    payments.forEach((p) => {
-      const key = String(p.user_id);
-      studentPaymentsMap.set(key, (studentPaymentsMap.get(key) || 0) + p.amount);
-    });
-
-    // Build financial report per student
-    let totalPaid = 0;
-    let totalPending = 0;
-    let totalCompleted = 0;
-
-    const records = [];
-
-    for (const student of students) {
-      const studentPlans = plans.filter((p) => String(p.user_id) === String(student._id));
-      const studentTotalPaid = studentPaymentsMap.get(String(student._id)) || 0;
-      const totalPlanAmount = studentPlans.reduce((sum, plan) => sum + plan.amount, 0);
-
-      const isCompleted = studentTotalPaid >= totalPlanAmount;
-
-      // Apply status filter
-      if (status === "completed" && !isCompleted) continue;
-      if (status === "pending" && isCompleted) continue;
-
-      totalPaid += studentTotalPaid;
-      if (isCompleted) totalCompleted += 1;
-      else totalPending += 1;
-
-      records.push({
-        id: student._id,
-        student_id: student.student_id,
-        fullname: student.fullname,
-        email: student.email,
-        phone: student.phone,
-        center: student.center,
-        totalPlanAmount,
-        totalPaid: studentTotalPaid,
-        status: isCompleted ? "completed" : "pending",
-        planDetails: studentPlans.map((plan) => ({
-          amount: plan.amount,
-          estimate: plan.estimate,
-          course: plan.course_id,
-          last_payment_date: plan.last_payment_date,
-          next_payment_date: plan.next_payment_date,
-        })),
-      });
-    }
-
-    return res.status(200).json({
-      status: 200,
-      data: {
-        totalCompleted,
-        totalPending,
-        totalPaid,
-        totalStudents: records.length,
-        records,
-      },
-    });
-  } catch (error) {
-    console.error("❌ Error fetching financial report:", error);
-    res.status(500).json({ data: "Internal Server Error", status: 500, details: error });
-  }
-};
-
-
-export const getReport = async(req: Request, res:Response) =>{
-   try {
-
-    const user = await getUser(req);
     if (!user || !user.isAdmin) {
-        return res.status(401).json({ data: 'Unauthorized', status: 401 });
+      return res.status(401).json({ data: 'Unauthorized', status: 401 });
     }
 
-    const { from, to } = req.query;
+    // Extract parameters
+    const { 
+      page = 1, 
+      limit = 20,
+      from, 
+      to, 
+      center, 
+      course, 
+      q, 
+      status,
+      export: exportExcel
+    } = req.query;
 
     const query: any = {};
-    
-    // Apply date filter (reg_date is stored as YYYY-MM-DD string)
+
+    // Date filtering
     if (from || to) {
       query.reg_date = {};
-    
       if (from) query.reg_date.$gte = from as string;
       if (to) query.reg_date.$lte = to as string;
     }
-    
-    // Fetch plans based on date filter
-    const paymentPlans = await Paymentplan.find(query);
-    
-    // Basic counts
-    const totalPaymentPlans = paymentPlans.length;
-    const completedPlans = paymentPlans.filter(plan => plan.paid > 0);
-    const pendingPlans = paymentPlans.filter(plan => plan.pending > 0);
-    
-    // Sums
+
+    // Filter by course if provided
+    if (course) {
+      query.course_id = course;
+    }
+
+    // Search students by name
+    if (q) {
+      const students = await Student.find({ 
+        fullname: { $regex: q, $options: "i" } 
+      }).select("_id").lean();
+      const studentIds = students.map(s => s._id);
+      query.user_id = {$in: studentIds};
+    }
+
+    // Get ALL plans for statistics (not paginated)
+    let allPlans = await Paymentplan.find(query)
+      .populate({
+        path: 'user_id',
+        select: 'fullname email student_id center isactive',
+        populate: {
+          path: 'center',
+          select: 'name location' 
+        }
+      })
+      .populate({
+        path: 'course_id',
+        select: 'title duration amount'
+      });
+
+    // Apply filters to all plans for statistics
+    if (center) {
+      allPlans = allPlans.filter(plan =>
+        (plan.user_id as any)?.center?._id?.toString() === center
+      );
+    }
+
+    if (status === 'completed') {
+      allPlans = allPlans.filter(plan => plan.pending === 0);
+    }
+
+    if (status === 'pending') {
+      allPlans = allPlans.filter(plan => plan.pending > 0);
+    }
+
+    // Calculate statistics from ALL filtered plans
+    const totalPaymentPlans = allPlans.length;
+    const completedPlans = allPlans.filter(plan => plan.pending === 0);
+    const pendingPlans = allPlans.filter(plan => plan.pending > 0);
     const TotalCompletedAmount = completedPlans.reduce((acc, plan) => acc + plan.paid, 0);
     const TotalPendingAmount = pendingPlans.reduce((acc, plan) => acc + plan.pending, 0);
-    
-    return res.status(200).json({
-      status: 200,
-      filters: { from, to },
-      data: {
-        totalPaymentPlans,
-        completedCount: completedPlans.length,
-        pendingCount: pendingPlans.length,
-        TotalCompletedAmount: `₦${TotalCompletedAmount.toLocaleString()}`,
-        TotalPendingAmount: `₦${TotalPendingAmount.toLocaleString()}`
-      }
-    });
-    
-   } catch (error) {
-    console.error(" Error fetching report:", error);
-    return res.status(500).json({ data: "Internal Server Error", status: 500});
-   }
 
-    
-}
+    // Handle Excel export
+    if (exportExcel === 'true') {
+      // Create workbook and worksheet
+      const workbook = new ExcelJS.Workbook();
+      const worksheet = workbook.addWorksheet('Payment Plans');
+
+      // Define columns
+      worksheet.columns = [
+        { header: 'Student ID', key: 'studentId', width: 15 },
+        { header: 'Full Name', key: 'fullname', width: 25 },
+        { header: 'Email', key: 'email', width: 30 },
+        { header: 'Center', key: 'center', width: 20 },
+        { header: 'Course', key: 'course', width: 30 },
+        { header: 'Paid Amount', key: 'paid', width: 15 },
+        { header: 'Pending Amount', key: 'pending', width: 15 },
+        { header: 'Total Estimate', key: 'estimate', width: 15 },
+        { header: 'Registration Date', key: 'reg_date', width: 20 },
+        { header: 'Last Payment Date', key: 'last_payment_date', width: 20 },
+        { header: 'Next Payment Date', key: 'next_payment_date', width: 20 },
+        { header: 'Status', key: 'status', width: 15 }
+      ];
+
+      // Add data rows
+      allPlans.forEach(plan => {
+        worksheet.addRow({
+          studentId: (plan.user_id as any)?.student_id,
+          fullname: (plan.user_id as any)?.fullname,
+          email: (plan.user_id as any)?.email,
+          center: (plan.user_id as any)?.center?.name,
+          course: (plan.course_id as any)?.title,
+          paid: plan.paid,
+          pending: plan.pending,
+          estimate: plan.estimate,
+          reg_date: plan.reg_date?.toString().split('T')[0],
+          last_payment_date: plan.last_payment_date?.toString().split('T')[0],
+          next_payment_date: plan.next_payment_date?.toString().split('T')[0],
+          status: plan.pending === 0 ? 'Completed' : 'Pending'
+        });
+      });
+
+      // Format header row
+      worksheet.getRow(1).eachCell((cell) => {
+        cell.font = { bold: true };
+      });
+
+      // Set response headers for Excel download
+      res.setHeader(
+        'Content-Type',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+      );
+      res.setHeader(
+        'Content-Disposition',
+        `attachment; filename=payment-plans-${new Date().toISOString().split('T')[0]}.xlsx`
+      );
+
+      // Write workbook to response
+      await workbook.xlsx.write(res);
+      return res.end();
+    }
+
+    // Now get paginated plans
+    const paginatedQuery = Paymentplan.find(query)
+      .populate({
+        path: 'user_id',
+        select: 'fullname email student_id center isactive',
+        populate: {
+          path: 'center',
+          select: 'name location' 
+        }
+      })
+      .populate({
+        path: 'course_id',
+        select: 'title duration amount'
+      })
+      .limit(Number(limit))
+      .skip((Number(page) - 1) * Number(limit));
+
+    let paginatedPlans = await paginatedQuery.exec();
+
+    // Apply same filters to paginated results
+    if (center) {
+      paginatedPlans = paginatedPlans.filter(plan =>
+        (plan.user_id as any)?.center?._id?.toString() === center
+      );
+    }
+
+    if (status === 'completed') {
+      allPlans = allPlans.filter(plan => plan.pending === 0);
+    }
+
+    if (status === 'pending') {
+      allPlans = allPlans.filter(plan => plan.pending > 0);
+    }
+
+    // Get total count for pagination (before client-side filters)
+    const totalDocuments = await Paymentplan.countDocuments(query);
+    const totalPages = Math.ceil(totalDocuments / Number(limit));
+
+    // Create JSON response
+    const response = {
+      status: 200,
+      data: {
+        summary: {
+          totalPaymentPlans,
+          completedCount: completedPlans.length,
+          pendingCount: pendingPlans.length,
+          TotalCompletedAmount: `₦${TotalCompletedAmount.toLocaleString()}`,
+          TotalPendingAmount: `₦${TotalPendingAmount.toLocaleString()}`,
+        },
+        plans: paginatedPlans.map(plan => ({
+          _id: plan._id,
+          paid: plan.paid,
+          pending: plan.pending,
+          estimate: plan.estimate,
+          installments: plan.installments,
+          per_installment: plan.per_installment,
+          last_payment_date: plan.last_payment_date,
+          next_payment_date: plan.next_payment_date,
+          reg_date: plan.reg_date,
+          student: {
+            _id: (plan.user_id as any)?._id,
+            fullname: (plan.user_id as any)?.fullname,
+            email: (plan.user_id as any)?.email,
+            student_id: (plan.user_id as any)?.student_id,
+            isactive: (plan.user_id as any)?.isactive,
+            center: {
+              _id: (plan.user_id as any)?.center?._id,
+              name: (plan.user_id as any)?.center?.name,
+            }
+          },
+          course: {
+            _id: (plan.course_id as any)?._id,
+            title: (plan.course_id as any)?.title,
+          }
+        }))
+      },
+      pagination: {
+        hasPreviousPage: Number(page) > 1,
+        previousPages: Number(page) - 1,
+        hasNextPage: Number(page) < totalPages,
+        nextPages: Number(page) + 1,
+        totalPages,
+        totalDocuments,
+        currentPage: Number(page),
+        filteredCount: totalPaymentPlans
+      },
+      filters: { from, to, center, course, status }
+    };
+
+    return res.status(200).json(response);
+
+  } catch (error) {
+    console.error("Error fetching report:", error);
+    return res.status(500).json({ data: "Internal Server Error", status: 500 });
+  }
+};
+
 
 
 
