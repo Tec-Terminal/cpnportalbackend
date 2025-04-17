@@ -1495,7 +1495,7 @@ export const getReport = async (req: Request, res: Response) => {
       );
       res.setHeader(
         'Content-Disposition',
-        `attachment; filename=payment-plans-${new Date().toISOString().split('T')[0]}.xlsx`
+        `attachment; filename=financial-report-${new Date().toISOString().split('T')[0]}.xlsx`
       );
 
       // Write workbook to response
