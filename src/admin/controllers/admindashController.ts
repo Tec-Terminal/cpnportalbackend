@@ -1456,6 +1456,7 @@ export const getReport = async (req: Request, res: Response) => {
         { header: 'Email', key: 'email', width: 30 },
         { header: 'Center', key: 'center', width: 20 },
         { header: 'Course', key: 'course', width: 30 },
+        { header: 'Amount', key: 'amount', width: 30 },
         { header: 'Paid Amount', key: 'paid', width: 15 },
         { header: 'Pending Amount', key: 'pending', width: 15 },
         { header: 'Total Estimate', key: 'estimate', width: 15 },
@@ -1473,6 +1474,7 @@ export const getReport = async (req: Request, res: Response) => {
           email: (plan.user_id as any)?.email,
           center: (plan.user_id as any)?.center?.name,
           course: (plan.course_id as any)?.title,
+          amount: plan.amount,
           paid: plan.paid,
           pending: plan.pending,
           estimate: plan.estimate,
@@ -1555,6 +1557,7 @@ export const getReport = async (req: Request, res: Response) => {
         plans: paginatedPlans.map(plan => ({
           _id: plan._id,
           paid: plan.paid,
+          amount: plan.amount,
           pending: plan.pending,
           estimate: plan.estimate,
           installments: plan.installments,
