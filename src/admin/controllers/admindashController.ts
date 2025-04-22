@@ -1564,6 +1564,7 @@ export const getReport = async (req: Request, res: Response) => {
           per_installment: plan.per_installment,
           last_payment_date: plan.last_payment_date,
           next_payment_date: plan.next_payment_date,
+          status: plan.pending === 0 ? 'Completed' : 'Pending',
           reg_date: plan.reg_date,
           student: {
             _id: (plan.user_id as any)?._id,
