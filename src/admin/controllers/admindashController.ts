@@ -1423,17 +1423,17 @@ export const getReport = async (req: Request, res: Response) => {
 
     // Apply filters to all plans for statistics
     if (center) {
-      allPlans = allPlans.filter(plan =>
+      query.allPlans = allPlans.filter(plan =>
         (plan.user_id as any)?.center?._id?.toString() === center
       );
     }
 
     if (status === 'completed') {
-      allPlans = allPlans.filter(plan => plan.pending === 0);
+      query.allPlans = allPlans.filter(plan => plan.pending === 0);
     }
 
     if (status === 'pending') {
-      allPlans = allPlans.filter(plan => plan.pending > 0);
+      query.allPlans = allPlans.filter(plan => plan.pending > 0);
     }
 
     // Calculate statistics from ALL filtered plans
