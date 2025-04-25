@@ -1525,19 +1525,19 @@ export const getReport = async (req: Request, res: Response) => {
     let paginatedPlans = await paginatedQuery.exec();
 
     // Apply same filters to paginated results
-    if (center) {
-      paginatedPlans = paginatedPlans.filter(plan =>
-        (plan.user_id as any)?.center?._id?.toString() === center
-      );
-    }
+    // if (center) {
+    //   paginatedPlans = paginatedPlans.filter(plan =>
+    //     (plan.user_id as any)?.center?._id?.toString() === center
+    //   );
+    // }
 
-    if (status === 'completed') {
-      allPlans = allPlans.filter(plan => plan.pending === 0);
-    }
+    // if (status === 'completed') {
+    //   allPlans = allPlans.filter(plan => plan.pending === 0);
+    // }
 
-    if (status === 'pending') {
-      allPlans = allPlans.filter(plan => plan.pending > 0);
-    }
+    // if (status === 'pending') {
+    //   allPlans = allPlans.filter(plan => plan.pending > 0);
+    // }
 
     // Get total count for pagination (before client-side filters)
     const totalDocuments = await Paymentplan.countDocuments(query);
