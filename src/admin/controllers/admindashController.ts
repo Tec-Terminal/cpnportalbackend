@@ -1475,7 +1475,7 @@ export const getReport = async (req: Request, res: Response) => {
       ];
 
       // Add rows for Excel export
-      paginatedPlans.forEach(plan => {
+      allPlans.forEach(plan => {
         worksheet.addRow({
           studentId: (plan.user_id as any)?.student_id,
           fullname: (plan.user_id as any)?.fullname,
