@@ -1408,8 +1408,11 @@ export const getReport = async (req: Request, res: Response) => {
 
     // Filter by center if provided
     if (center) {
-      query['user_id.center'] = center;
-    }
+      // Fetch students belonging to the specified center
+      const usersInCenter = await Student.find({ center }).select("_id").lean();
+      const userIds = usersInCenter.map(u => u._id);
+      query.user_id = { $in: userIds };
+  }
 
     // Filter by status (completed or pending)
     if (status) {
@@ -1420,12 +1423,8 @@ export const getReport = async (req: Request, res: Response) => {
       }
     }
 
-    // Get total count of filtered records for pagination
-    const totalDocuments = await Paymentplan.countDocuments(query);
-    const totalPages = Math.ceil(totalDocuments / Number(limit));
-
-    // Get the paginated plans based on the filtered query
-    const paginatedPlans = await Paymentplan.find(query)
+    // Fetch all records without pagination to calculate statistics
+    const allPlans = await Paymentplan.find(query)
       .populate({
         path: 'user_id',
         select: 'fullname email student_id center isactive',
@@ -1437,16 +1436,21 @@ export const getReport = async (req: Request, res: Response) => {
       .populate({
         path: 'course_id',
         select: 'title duration amount'
-      })
-      .limit(Number(limit))
-      .skip((Number(page) - 1) * Number(limit));
+      });
 
-    // Calculate statistics for the filtered data
-    const totalPaymentPlans = paginatedPlans.length;
-    const completedPlans = paginatedPlans.filter(plan => plan.pending === 0);
-    const pendingPlans = paginatedPlans.filter(plan => plan.pending > 0);
+    // Calculate statistics for the entire dataset
+    const totalPaymentPlans = allPlans.length;
+    const completedPlans = allPlans.filter(plan => plan.pending === 0);
+    const pendingPlans = allPlans.filter(plan => plan.pending > 0);
     const TotalCompletedAmount = completedPlans.reduce((acc, plan) => acc + plan.paid, 0);
     const TotalPendingAmount = pendingPlans.reduce((acc, plan) => acc + plan.pending, 0);
+
+    // Get total count of filtered records for pagination
+    const totalDocuments = allPlans.length;
+    const totalPages = Math.ceil(totalDocuments / Number(limit));
+
+    // Get the paginated plans based on the filtered query
+    const paginatedPlans = allPlans.slice((Number(page) - 1) * Number(limit), Number(page) * Number(limit));
 
     // Handle Excel export
     if (exportExcel === 'true') {
@@ -1568,6 +1572,7 @@ export const getReport = async (req: Request, res: Response) => {
     return res.status(500).json({ data: "Internal Server Error", status: 500 });
   }
 };
+
 
 
 
