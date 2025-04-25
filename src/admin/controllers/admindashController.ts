@@ -1406,8 +1406,26 @@ export const getReport = async (req: Request, res: Response) => {
       query.user_id = {$in: studentIds};
     }
 
-    // Get ALL plans for statistics (not paginated)
-    let allPlans = await Paymentplan.find(query)
+    // Filter by center if provided
+    if (center) {
+      query['user_id.center'] = center;
+    }
+
+    // Filter by status (completed or pending)
+    if (status) {
+      if (status === 'completed') {
+        query.pending = 0;
+      } else if (status === 'pending') {
+        query.pending = { $gt: 0 }; // Pending status is when there are remaining payments
+      }
+    }
+
+    // Get total count of filtered records for pagination
+    const totalDocuments = await Paymentplan.countDocuments(query);
+    const totalPages = Math.ceil(totalDocuments / Number(limit));
+
+    // Get the paginated plans based on the filtered query
+    const paginatedPlans = await Paymentplan.find(query)
       .populate({
         path: 'user_id',
         select: 'fullname email student_id center isactive',
@@ -1419,37 +1437,23 @@ export const getReport = async (req: Request, res: Response) => {
       .populate({
         path: 'course_id',
         select: 'title duration amount'
-      });
+      })
+      .limit(Number(limit))
+      .skip((Number(page) - 1) * Number(limit));
 
-    // Apply filters to all plans for statistics
-    if (center) {
-      query.allPlans = allPlans.filter(plan =>
-        (plan.user_id as any)?.center?._id?.toString() === center
-      );
-    }
-
-    if (status === 'completed') {
-      query.allPlans = allPlans.filter(plan => plan.pending === 0);
-    }
-
-    if (status === 'pending') {
-      query.allPlans = allPlans.filter(plan => plan.pending > 0);
-    }
-
-    // Calculate statistics from ALL filtered plans
-    const totalPaymentPlans = allPlans.length;
-    const completedPlans = allPlans.filter(plan => plan.pending === 0);
-    const pendingPlans = allPlans.filter(plan => plan.pending > 0);
+    // Calculate statistics for the filtered data
+    const totalPaymentPlans = paginatedPlans.length;
+    const completedPlans = paginatedPlans.filter(plan => plan.pending === 0);
+    const pendingPlans = paginatedPlans.filter(plan => plan.pending > 0);
     const TotalCompletedAmount = completedPlans.reduce((acc, plan) => acc + plan.paid, 0);
     const TotalPendingAmount = pendingPlans.reduce((acc, plan) => acc + plan.pending, 0);
 
     // Handle Excel export
     if (exportExcel === 'true') {
-      // Create workbook and worksheet
       const workbook = new ExcelJS.Workbook();
       const worksheet = workbook.addWorksheet('Payment Plans');
-
-      // Define columns
+      
+      // Define columns for Excel
       worksheet.columns = [
         { header: 'Student ID', key: 'studentId', width: 15 },
         { header: 'Full Name', key: 'fullname', width: 25 },
@@ -1466,8 +1470,8 @@ export const getReport = async (req: Request, res: Response) => {
         { header: 'Status', key: 'status', width: 15 }
       ];
 
-      // Add data rows
-      allPlans.forEach(plan => {
+      // Add rows for Excel export
+      paginatedPlans.forEach(plan => {
         worksheet.addRow({
           studentId: (plan.user_id as any)?.student_id,
           fullname: (plan.user_id as any)?.fullname,
@@ -1485,7 +1489,7 @@ export const getReport = async (req: Request, res: Response) => {
         });
       });
 
-      // Format header row
+      // Format header row in Excel
       worksheet.getRow(1).eachCell((cell) => {
         cell.font = { bold: true };
       });
@@ -1500,50 +1504,12 @@ export const getReport = async (req: Request, res: Response) => {
         `attachment; filename=financial-report-${new Date().toISOString().split('T')[0]}.xlsx`
       );
 
-      // Write workbook to response
+      // Write the Excel workbook to the response
       await workbook.xlsx.write(res);
       return res.end();
     }
 
-    // Now get paginated plans
-    const paginatedQuery = Paymentplan.find(query)
-      .populate({
-        path: 'user_id',
-        select: 'fullname email student_id center isactive',
-        populate: {
-          path: 'center',
-          select: 'name location' 
-        }
-      })
-      .populate({
-        path: 'course_id',
-        select: 'title duration amount'
-      })
-      .limit(Number(limit))
-      .skip((Number(page) - 1) * Number(limit));
-
-    let paginatedPlans = await paginatedQuery.exec();
-
-    // Apply same filters to paginated results
-    // if (center) {
-    //   paginatedPlans = paginatedPlans.filter(plan =>
-    //     (plan.user_id as any)?.center?._id?.toString() === center
-    //   );
-    // }
-
-    // if (status === 'completed') {
-    //   allPlans = allPlans.filter(plan => plan.pending === 0);
-    // }
-
-    // if (status === 'pending') {
-    //   allPlans = allPlans.filter(plan => plan.pending > 0);
-    // }
-
-    // Get total count for pagination (before client-side filters)
-    const totalDocuments = await Paymentplan.countDocuments(query);
-    const totalPages = Math.ceil(totalDocuments / Number(limit));
-
-    // Create JSON response
+    // Prepare the response data for pagination and summary
     const response = {
       status: 200,
       data: {
@@ -1591,7 +1557,6 @@ export const getReport = async (req: Request, res: Response) => {
         totalPages,
         totalDocuments,
         currentPage: Number(page),
-        filteredCount: totalPaymentPlans
       },
       filters: { from, to, center, course, status }
     };
@@ -1603,6 +1568,7 @@ export const getReport = async (req: Request, res: Response) => {
     return res.status(500).json({ data: "Internal Server Error", status: 500 });
   }
 };
+
 
 
 
