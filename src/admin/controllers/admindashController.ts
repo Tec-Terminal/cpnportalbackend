@@ -1444,6 +1444,8 @@ export const getReport = async (req: Request, res: Response) => {
     const pendingPlans = allPlans.filter(plan => plan.pending > 0);
     const TotalCompletedAmount = completedPlans.reduce((acc, plan) => acc + plan.paid, 0);
     const TotalPendingAmount = pendingPlans.reduce((acc, plan) => acc + plan.pending, 0);
+    const paidPlans = allPlans.filter(plan => plan.paid > 0);
+    const TotalPaidAmount = paidPlans.reduce((acc, plan) => acc + plan.paid, 0)
 
     // Get total count of filtered records for pagination
     const totalDocuments = allPlans.length;
@@ -1523,6 +1525,7 @@ export const getReport = async (req: Request, res: Response) => {
           pendingCount: pendingPlans.length,
           TotalCompletedAmount: `₦${TotalCompletedAmount.toLocaleString()}`,
           TotalPendingAmount: `₦${TotalPendingAmount.toLocaleString()}`,
+          TotalPaidAmount: `₦${TotalPaidAmount.toLocaleString()}`
         },
         plans: paginatedPlans.map(plan => ({
           _id: plan._id,
