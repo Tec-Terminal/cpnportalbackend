@@ -1438,6 +1438,13 @@ export const getReport = async (req: Request, res: Response) => {
         select: 'title duration amount'
       });
 
+      // sort in alphebetical order
+      allPlans.sort((a, b) => {
+      const nameA = (a.user_id as any)?.fullname?.toLowerCase() || '';
+      const nameB = (b.user_id as any)?.fullname?.toLowerCase() || '';
+      return nameA.localeCompare(nameB);
+    });
+
     // Calculate statistics for the entire dataset
     const totalPaymentPlans = allPlans.length;
     const completedPlans = allPlans.filter(plan => plan.pending === 0);
@@ -1572,6 +1579,75 @@ export const getReport = async (req: Request, res: Response) => {
 
   } catch (error) {
     console.error("Error fetching report:", error);
+    return res.status(500).json({ data: "Internal Server Error", status: 500 });
+  }
+};
+
+
+// get individual student report
+export const getStudentReport = async (req: Request, res: Response) => {
+  try {
+    const user = await getUser(req);
+    if (!user || !user.isAdmin) {
+      return res.status(401).json({ data: 'Unauthorized', status: 401 });
+    }
+
+    // Extract student ID from params
+    const { studentId } = req.params;
+
+    // Fetch payment plans for the specific student
+    const studentPlans = await Paymentplan.find({ user_id: studentId })
+      .populate({
+        path: 'user_id',
+        select: 'fullname email student_id center isactive',
+        populate: {
+          path: 'center',
+          select: 'name location' 
+        }
+      })
+      .populate({
+        path: 'course_id',
+        select: 'title duration amount'
+      })
+      .sort({ reg_date: -1 }); // Sort by registration date (newest first)
+
+    // Prepare the response data
+    const response = {
+      status: 200,
+      data: studentPlans.map(plan => ({
+        _id: plan._id,
+        paid: plan.paid,
+        amount: plan.amount,
+        pending: plan.pending,
+        estimate: plan.estimate,
+        installments: plan.installments,
+        per_installment: plan.per_installment,
+        last_payment_date: plan.last_payment_date,
+        next_payment_date: plan.next_payment_date,
+        status: plan.pending === 0 ? 'Completed' : 'Pending',
+        reg_date: plan.reg_date,
+        student: {
+          _id: (plan.user_id as any)?._id,
+          fullname: (plan.user_id as any)?.fullname,
+          email: (plan.user_id as any)?.email,
+          student_id: (plan.user_id as any)?.student_id,
+          isactive: (plan.user_id as any)?.isactive,
+          center: {
+            _id: (plan.user_id as any)?.center?._id,
+            name: (plan.user_id as any)?.center?.name,
+          }
+        },
+        course: {
+          _id: (plan.course_id as any)?._id,
+          title: (plan.course_id as any)?.title,
+        }
+      }))
+    };
+
+    return res.status(200).json(response);
+
+  } catch (error) {
+    console.error("Error fetching student report:", error);
     return res.status(500).json({ data: "Internal Server Error", status: 500 });
   }
 };

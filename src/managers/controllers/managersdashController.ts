@@ -597,8 +597,26 @@ export const getAllInvoices = async (req: Request, res: Response) => {
     if (!user || user.isAdmin) {
       return res.status(401).json({ data: "Unauthorized", status: 401 });
     }
+    const { q, course} = req.query;
 
-    const invoices = await Invoice.find().populate({
+    const query: any = {};
+
+
+    if (q){
+      const students = await Student.find({ 
+        fullname: { $regex: q, $options: "i" } 
+      }).select("_id").lean();
+      const studentIds = students.map(s => s._id);
+      query.user_id = {$in: studentIds};
+    }
+
+    if (course) {
+      query.course_id = course;
+    }
+
+
+
+    const invoices = await Invoice.find({query, center:user.user.center}).populate({
       path: "payment_plan_id",
       model: Paymentplan,
       select:
