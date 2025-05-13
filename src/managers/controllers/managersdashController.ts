@@ -599,7 +599,7 @@ export const getAllInvoices = async (req: Request, res: Response) => {
     }
     const { q, course} = req.query;
 
-    const query: any = {};
+    const query: any = { center: user.user.center};
 
 
     if (q){
@@ -616,7 +616,7 @@ export const getAllInvoices = async (req: Request, res: Response) => {
 
 
 
-    const invoices = await Invoice.find({query, center:user.user.center}).populate({
+    const invoices = await Invoice.find(query).populate({
       path: "payment_plan_id",
       model: Paymentplan,
       select:
@@ -645,10 +645,8 @@ export const getAllInvoices = async (req: Request, res: Response) => {
       status: 200,
     });
   } catch (error) {
-    res.status(500).json({
-      error: "Error fetching invoices",
-      details: error,
-    });
+    console.error("Error Fetching Invoice:", error);
+    return res.status(500).json({ data: "Internal Server Error", status: 500 });
   }
 };
 
