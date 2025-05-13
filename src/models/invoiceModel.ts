@@ -19,7 +19,7 @@ const InvoiceSchema: Schema = new Schema({
     required: true,
   },
   payment_plan_id: {
-    type: String,
+    type: mongoose.Schema.Types.ObjectId,
     required: true,
     ref: 'Paymentplan'
   },

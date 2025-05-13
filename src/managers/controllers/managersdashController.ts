@@ -597,30 +597,42 @@ export const getAllInvoices = async (req: Request, res: Response) => {
     if (!user || user.isAdmin) {
       return res.status(401).json({ data: "Unauthorized", status: 401 });
     }
-    const { q, course} = req.query;
 
-    const query: any = { center: user.user.center};
+    const { q, course } = req.query;
 
-
-    if (q){
-      const students = await Student.find({ 
-        fullname: { $regex: q, $options: "i" } 
-      }).select("_id").lean();
-      const studentIds = students.map(s => s._id);
-      query.user_id = {$in: studentIds};
+    // Step 1: Build filter for students (if q is present)
+    let studentFilter: any = {};
+    if (q) {
+      studentFilter.fullname = { $regex: q, $options: "i" };
     }
+
+    const students = await Student.find({
+      ...studentFilter,
+      center: user.user.center,
+    }).select("_id").lean();
+
+    const studentIds = students.map((s) => s._id);
+
+    // Step 2: Find matching Paymentplans (by student and course if provided)
+    const paymentPlanQuery: any = {
+      user_id: { $in: studentIds },
+    };
 
     if (course) {
-      query.course_id = course;
+      paymentPlanQuery.course_id = new mongoose.Types.ObjectId(course as string);
     }
 
+    const paymentPlans = await Paymentplan.find(paymentPlanQuery).select("_id").lean();
+    const paymentPlanIds = paymentPlans.map((p) => p._id);
 
-
-    const invoices = await Invoice.find(query).populate({
+    // Step 3: Find invoices using those payment plans
+    const invoices = await Invoice.find({
+      payment_plan_id: { $in: paymentPlanIds },
+    }).populate({
       path: "payment_plan_id",
       model: Paymentplan,
       select:
-        "amount installments estimate last_payment_date next_payment_date reg_date",
+        "amount installments estimate last_payment_date next_payment_date reg_date user_id course_id",
       populate: [
         {
           path: "course_id",
@@ -631,16 +643,16 @@ export const getAllInvoices = async (req: Request, res: Response) => {
           path: "user_id",
           model: Student,
           select: "fullname email phone center student_id",
-          populate:[{
+          populate: {
             path: "center",
             model: Center,
-            select: "name location code"
-          }]
+            select: "name location code",
+          },
         },
       ],
     });
 
-    res.status(200).json({
+    return res.status(200).json({
       data: invoices,
       status: 200,
     });
