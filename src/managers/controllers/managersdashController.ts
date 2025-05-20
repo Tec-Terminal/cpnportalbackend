@@ -1182,4 +1182,53 @@ export const deleteStaffCertificate = async (req: Request, res: Response) => {
 
 
 
-// Center overview, endpoints for report generation
+// migration
+export const migrateInvoicePaymentPlans = async (req: Request, res: Response) => {
+  try {
+    const user = await getUser(req);
+
+      if (!user || user.isAdmin) {
+          return res.status(401).json({ data: "Unauthorized", status: 401 });
+      }
+
+      
+    const invoices = await Invoice.find({
+      payment_plan_id: { $type: 'string' },
+    });
+
+    let successCount = 0;
+    let failCount = 0;
+
+    for (const invoice of invoices) {
+      try {
+        const objectId = new mongoose.Types.ObjectId(invoice.payment_plan_id);
+        const planExists = await Paymentplan.exists({ _id: objectId });
+
+        if (planExists) {
+          await Invoice.updateOne(
+            { _id: invoice._id },
+            { $set: { payment_plan_id: objectId } }
+          );
+          successCount++;
+        } else {
+          failCount++;
+        }
+      } catch (err) {
+        console.error(`Error processing invoice ${invoice._id}:`, err);
+        failCount++;
+      }
+    }
+
+    return res.status(200).json({
+      message: 'Migration completed',
+      successCount,
+      failCount,
+      total: invoices.length,
+    });
+  } catch (err) {
+    console.error('Migration error:', err);
+    return res.status(500).json({
+      message: 'Migration failed'
+    });
+  }
+};

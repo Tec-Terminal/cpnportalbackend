@@ -1,6 +1,7 @@
 import express from 'express';
-import { createCenter, editCenter, deleteCenter, getAllCenters, getCenterById, createManager, getAllManagers, deleteManager, getManagerById, editManager,  createCourse, editCourse, getAllCourses, getCourseById, deleteCourse, adminGetAllStaff, adminGetOneStaff, adminGetAllStudents, adminGetOneStudent, deleteStudent, getAllInvoices, getAllPayments, getPaymentById, getInvoiceById, getPaymentsByStudentId, cleanupOrphanedPaymentsAndPlans, cleanupOrphanedInvoices, deleteStudentPayment, fixLegacyPaymentPlans, adminGetPaymentPlan, getReport } from '../controllers/admindashController';
+import { createCenter, editCenter, deleteCenter, getAllCenters, getCenterById, createManager, getAllManagers, deleteManager, getManagerById, editManager,  createCourse, editCourse, getAllCourses, getCourseById, deleteCourse, adminGetAllStaff, adminGetOneStaff, adminGetAllStudents, adminGetOneStudent, deleteStudent, getAllInvoices, getAllPayments, getPaymentById, getInvoiceById, getPaymentsByStudentId, cleanupOrphanedPaymentsAndPlans, cleanupOrphanedInvoices, deleteStudentPayment, fixLegacyPaymentPlans, adminGetPaymentPlan, getReport, uploadManagerImage, uploadManagerCertificate, deleteManagersCertificate } from '../controllers/admindashController';
 import verifyToken  from '../../middlewares/authMiddleware';
+import upload from '../../middlewares/multerConfig';
 const router = express.Router();
 
 
@@ -13,12 +14,14 @@ router.get('/centers/:id', verifyToken, getCenterById);
 
 
 // Admin create Manager
-
 router.post('/create-managers', verifyToken, createManager);
 router.get('/managers', verifyToken, getAllManagers);
 router.delete('/managers/:id', verifyToken, deleteManager);
 router.get('/managers/:id', verifyToken, getManagerById);
 router.patch('/managers/:id', verifyToken, editManager)
+router.post("/manager/:id/upload-image", upload.single("image"), verifyToken, uploadManagerImage);
+router.post("/manager/:id/upload-certificate", upload.single("certificate"), verifyToken, uploadManagerCertificate);
+router.delete("/manager/:id/certificate/:certificateId", deleteManagersCertificate);
 
 // Admin Create Courses
 router.post('/courses', verifyToken, createCourse);

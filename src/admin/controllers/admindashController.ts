@@ -13,6 +13,7 @@ import { Paginated } from '../../types/pagination.types';
 import Invoice from "../../models/invoiceModel";
 import Payment from "../../models/paymentModel";
 import ExcelJS from 'exceljs';
+import { uploadToCloudinary } from "../../config/cloudinary";
 
 
 
@@ -407,6 +408,114 @@ export const editManager = async (req: Request, res: Response) =>{
         })
     }
 }
+
+
+// manager details endpoint
+export const uploadManagerImage = async(req: Request, res:Response) =>{
+    try {
+      const { id } = req.params;
+      const user = await getUser(req);
+      if (!user || !user.isAdmin) {
+        return res.status(401).json({ data: "Unauthorized", status: 401 });
+      }
+      if (!req.file) {
+        return res.status(400).json({ data: "No file uploaded", status: 400 });
+      }
+      const result = await uploadToCloudinary(req.file.buffer);
+      const manager = await Manager.findById(id);
+      if (!manager) {
+        return res.status(404).json({ data: "Manager not found", status: 404 });
+      }
+      manager.image = result.secure_url;
+      await manager.save();
+      res.status(200).json({ data: "Image uploaded successfully", status: 200 });
+      
+    } catch (error) {
+      console.error(error);
+    
+      res.status(500).json({
+        error: "Error uploading manager image",
+        details: error,
+      })
+    }
+}
+
+
+export const uploadManagerCertificate = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { name } = req.body;
+    const user = await getUser(req);
+    if (!user || !user.isAdmin) {
+      return res.status(401).json({ data: "Unauthorized", status: 401 });
+    }
+    if (!name) {
+      return res.status(400).json({
+        data: "Name field is required",
+        status: 400,
+      });
+    }
+    if (!req.file) {
+      return res.status(400).json({ data: "No file uploaded", status: 400 });
+    }
+    const result = await uploadToCloudinary(req.file.buffer);
+    const manager = await Manager.findById(id);
+    if (!manager) {
+      return res.status(404).json({ data: "Manager not found", status: 404 });
+    }
+    manager.certificate = [
+      ...manager.certificate,
+      {
+        _id: new mongoose.Types.ObjectId(),
+        name: name,
+        url: result.secure_url,
+      },
+    ];
+    await manager.save();
+    res.status(200).json({
+      data: "Certificate uploaded and saved successfully",
+      status: 200,
+      certificate: manager.certificate,
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({
+      error: "Error uploading Managers certificate",
+      details: error,
+    });
+  }
+};
+
+export const deleteManagersCertificate = async (req: Request, res: Response) => {
+  try {
+      const { id, certificateId } = req.params;
+      const user = await getUser(req);
+
+      if (!user || !user.isAdmin) {
+          return res.status(401).json({ data: "Unauthorized", status: 401 });
+      }
+
+      const manager = await Manager.findById(id);
+      if (!manager) {
+          return res.status(404).json({ data: "manager not found", status: 404 });
+      }
+
+      manager.certificate = manager.certificate.filter(cert => cert._id.toString() !== certificateId);
+      await manager.save();
+
+      res.status(200).json({
+          data: "Certificate deleted successfully",
+          status: 200,
+          certificate: manager.certificate,
+      });
+  } catch (error) {
+      console.error("Error deleting manager certificate:", error);
+      res.status(500).json({
+          error: "Error deleting managers certificate",
+          details: error,
+      });
+  }
+};
 
 // ==========================================Courses===============================
 
