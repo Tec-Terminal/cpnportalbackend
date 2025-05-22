@@ -12,7 +12,7 @@ export const uploadToCloudinary = (fileBuffer: Buffer): Promise<UploadApiRespons
   console.log("Cloudinary config:", {
   name: process.env.CLOUDINARY_CLOUD_NAME,
   key: process.env.CLOUDINARY_API_KEY,
-  secret: process.env.CLOUDINARY_API_SECRET?.slice(0, 5) + "*****"
+  secret: process.env.CLOUDINARY_API_SECRET
 });
 
   return new Promise((resolve, reject) => {
