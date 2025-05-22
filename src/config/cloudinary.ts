@@ -9,6 +9,12 @@ cloudinary.v2.config({
 
 // Upload to Cloudinary
 export const uploadToCloudinary = (fileBuffer: Buffer): Promise<UploadApiResponse> => {
+  console.log("Cloudinary config:", {
+  name: process.env.CLOUDINARY_CLOUD_NAME,
+  key: process.env.CLOUDINARY_API_KEY,
+  secret: process.env.CLOUDINARY_API_SECRET?.slice(0, 5) + "*****"
+});
+
   return new Promise((resolve, reject) => {
     const uploadStream = cloudinary.v2.uploader.upload_stream(
       { resource_type: 'image' },
