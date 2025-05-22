@@ -458,7 +458,10 @@ export const uploadManagerCertificate = async (req: Request, res: Response) => {
     if (!req.file) {
       return res.status(400).json({ data: "No file uploaded", status: 400 });
     }
+    
+
     const result = await uploadToCloudinary(req.file.buffer);
+
     const manager = await Manager.findById(id);
     if (!manager) {
       return res.status(404).json({ data: "Manager not found", status: 404 });

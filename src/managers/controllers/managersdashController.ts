@@ -1083,6 +1083,8 @@ export const uploadStaffImage = async(req: Request, res:Response) =>{
       if (!req.file) {
         return res.status(400).json({ data: "No file uploaded", status: 400 });
       }
+      console.log("File buffer length:", req.file?.buffer?.length);
+    console.log("Upload endpoint hit");
       const result = await uploadToCloudinary(req.file.buffer);
       const staff = await Staff.findById(id);
       if (!staff) {
